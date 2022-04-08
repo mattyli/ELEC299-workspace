@@ -1,0 +1,171 @@
+// Motor driver PWM pin
+const byte E1 = 6;
+const byte E2 = 5;
+
+// Motor driver direction pin
+const byte M1 = 7;
+const byte M2 = 4;
+
+// E1 6, M1 7
+// E2 5, M2 4
+
+// Motor PWM command variable [0-255]
+byte u = 0;
+
+// Left wheel encoder digital pins
+const byte SIGNAL_A = 8;
+const byte SIGNAL_B = 9;
+
+/* 
+    SIG A = 8
+    SIG B = 9
+*/
+
+// Right wheel encoder digital pins
+const byte SIGNAL_C = 10;
+const byte SIGNAL_D = 11;
+
+/* 
+    SIG C = 10          // SIG A2
+    SIG D = 11          // SIG B2
+*/
+
+// GLOBAL CONSTANTS
+
+const int TPR = 3000;                         // Encoder ticks per (motor) revolution (TPR)
+const double track = 0.2775;                  // the track of the rover, can change depending on the rover [m]
+const double wheel_radius = 0.0625;           // the radius of the wheel, made variable for cleanliness [m]
+const int T = 200;                            // Sampling interval for measurements [ms]
+
+
+// Counter to keep track of encoder ticks [integer]
+volatile long encoder_ticks = 0;
+volatile long encoder_ticksR = 0;
+
+// Variable to store estimated angular rate of left wheel [rad/s]
+double w_L_left = 0.0;
+double v_L_left = 0.0;                       // linear speed
+
+double w_L_right = 0.0;              // angular speed of the wheel
+double v_L_right = 0.0;                  // linear speed
+
+double rover_speed = 0.0;               // initializing the rover speed to 0 [m/s]
+double rover_turning_rate = 0.0;        // initializng the rover's turning rate to 0 [rad/s]
+
+// Counters for milliseconds during interval
+long t_now = 0;
+long t_last = 0;
+
+// This function is called when SIGNAL_A goes HIGH
+void decodeEncoderTicksLeft()
+{
+    if (digitalRead(SIGNAL_B) == LOW)
+    {
+        encoder_ticks--;        // SIGNAL_A leads SIGNAL_B, so count one way
+    }
+    else
+    {
+        encoder_ticks++;        // SIGNAL_B leads SIGNAL_A, so count the other way
+    }
+}
+
+void decodeEncoderTicksRight()
+{
+    if (digitalRead(SIGNAL_D) == LOW)
+    {
+        encoder_ticksR--;       // SIGNAL_A leads SIGNAL_D, so count one way
+    }
+    else
+    {
+        encoder_ticksR++;       // SIGNAL_D leads SIGNAL_C, so count the other way
+    }
+}
+
+double calcAngularSpeed(double encoder_ticks, long t_now, long t_last){
+    double w;
+    w = 2.0 * PI * ((double)encoder_ticks / (double)TPR) * 1000.0 / (double)(t_now - t_last); // PI and TPR are global constants
+    return w;
+}
+
+double calcRoverSpeed(double leftWheelLinSpeed, double rightWheelLinSpeed){
+    double linearSpeed;
+    linearSpeed = 0.5 * (leftWheelLinSpeed + rightWheelLinSpeed);
+    return linearSpeed;
+}// calculating the linear speed of the rover [m/s]
+
+double calcRoverTurningRate(double rightWheelLinSpeed, double leftWheelLinSpeed){
+    double turningRate;
+    turningRate = (1/track) * (rightWheelLinSpeed - leftWheelLinSpeed);
+    return turningRate;
+}// calculating the rotational speed of the rover [rad/s]
+
+void setup()
+{
+    // Open the serial port at 9600 bps
+    Serial.begin(9600);
+
+    // Set the pin modes for the motor driver
+    pinMode(M1, OUTPUT);
+    pinMode(M2, OUTPUT);
+
+    // Set the pin modes for the encoders
+    pinMode(SIGNAL_A, INPUT);
+    pinMode(SIGNAL_B, INPUT);
+    pinMode(SIGNAL_C, INPUT);
+    pinMode(SIGNAL_D, INPUT);
+
+    // Every time the pin goes high, this is a pulse
+    attachInterrupt(digitalPinToInterrupt(SIGNAL_A), decodeEncoderTicksLeft, RISING);
+    attachInterrupt(digitalPinToInterrupt(SIGNAL_C), decodeEncoderTicksRight, RISING);
+    // Print a message
+    Serial.print("Program initialized.");
+    Serial.print("\n");
+}
+
+void loop()
+{
+    // Get the elapsed time [ms]
+    t_now = millis();
+
+    if (t_now - t_last >= T)
+    {
+        // ************************ SPEED CALCULATIONS ********************************************
+        w_L_left = calcAngularSpeed(encoder_ticks, t_now, t_last);      // left wheel angular
+        v_L_left = w_L_left * wheel_radius;                             // left wheel linear speed
+
+        w_L_right = calcAngularSpeed(encoder_ticksR, t_now, t_last);    // right wheel angular
+        v_L_right = w_L_right * wheel_radius;                           // right wheel linear
+
+        // linear speed of the rover --> average of the linear speeds of left and right wheels
+        rover_speed = calcRoverSpeed(v_L_left, v_L_right);     
+        rover_turning_rate = calcRoverTurningRate(v_L_right, v_L_left);
+
+        // ************************ SPEED CALCULATIONS ********************************************
+
+        // Printing information to the serial monitor
+        Serial.print("Estimated rover speed (m/s): ");
+        Serial.print(rover_speed);
+        Serial.print("\n");
+
+        Serial.print("Estimated rover turning rate (rad/s): ");
+        Serial.print(rover_turning_rate);
+        Serial.print("\n");
+
+        // Record the current time [ms]
+        t_last = t_now;
+
+        // Reset the encoder ticks counter
+        encoder_ticks = 0;
+    }
+
+    // Set the wheel motor PWM command [0-255]
+    u = 128;
+
+    // SET TO VARIABLE SPEEDS
+    // Write to the output pins
+    digitalWrite(M1, LOW); // Drive forward (left wheels)
+    analogWrite(E1, u);    // Write left motors command
+
+    digitalWrite(M2, LOW); // Drive forward (right wheels)
+    analogWrite(E2, 200);    // Write left motors command
+}

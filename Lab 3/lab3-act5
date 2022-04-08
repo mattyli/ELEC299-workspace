@@ -1,0 +1,191 @@
+// """
+//     FIRST BLOCK:
+//     Setup code for the SHARP SENSORS
+// """
+const byte SHARP_PIN_FRONT = 0;
+const byte SHARP_PIN_LEFT = 1;
+const byte SHARP_PIN_RIGHT = 2;
+
+// Variable to store the proximity measurement
+int sharp_val = 0;
+int sharpValLeft = 0;
+int sharpValRight = 0;
+
+double estimatedDistanceFront = 0.0;
+double estimatedDistanceLeft = 0.0;
+double estimatedDistanceRight = 0.0;
+
+double analogToDistance(int analogValue){
+    double distance;
+    float analogValueF = (float)analogValue;
+    double quadTerm =   pow(analogValueF, 4);
+    double tripleTerm = pow(analogValueF, 3);
+    double doubleTerm = pow(analogValueF, 2);
+    
+    distance = (0.00000002 * quadTerm) - (0.00002 * tripleTerm) + (0.0099 * doubleTerm) - (2.0354*analogValueF + 178.39); // V2
+
+    return distance/-10;
+}// distance equation is from regression performed using calibrated values in excel
+// """
+//     END OF FIRST BLOCK
+// """
+
+// """
+//     SECOND BLOCK:
+//     Setup code for the rover motors and stuff
+// """
+// Motor driver PWM pin
+const byte E1 = 6;
+const byte E2 = 5;
+
+// Motor driver direction pin
+const byte M1 = 7;
+const byte M2 = 4;
+
+// E1 6, M1 7
+// E2 5, M2 4
+
+// Motor PWM command variable [0-255]
+byte u = 0;
+
+// Left wheel encoder digital pins
+const byte SIGNAL_A = 8;
+const byte SIGNAL_B = 9;
+
+/* 
+    SIG A = 8
+    SIG B = 9
+*/
+
+// Right wheel encoder digital pins
+const byte SIGNAL_C = 10;
+const byte SIGNAL_D = 11;
+
+/* 
+    SIG C = 10          // SIG A2
+    SIG D = 11          // SIG B2
+*/
+
+// GLOBAL CONSTANTS
+
+const int TPR = 3000;                         // Encoder ticks per (motor) revolution (TPR)
+const double track = 0.2775;                  // the track of the rover, can change depending on the rover [m]
+const double wheel_radius = 0.0625;           // the radius of the wheel, made variable for cleanliness [m]
+const int T = 200;                            // Sampling interval for measurements [ms]
+
+
+// Counter to keep track of encoder ticks [integer]
+volatile long encoder_ticks = 0;
+volatile long encoder_ticksR = 0;
+
+// Variable to store estimated angular rate of left wheel [rad/s]
+double w_L_left = 0.0;
+double v_L_left = 0.0;                       // linear speed
+
+double w_L_right = 0.0;              // angular speed of the wheel
+double v_L_right = 0.0;                  // linear speed
+
+double rover_speed = 0.0;               // initializing the rover speed to 0 [m/s]
+double rover_turning_rate = 0.0;        // initializng the rover's turning rate to 0 [rad/s]
+
+// Counters for milliseconds during interval
+long t_now = 0;
+long t_last = 0;
+
+// This function is called when SIGNAL_A goes HIGH
+void decodeEncoderTicksLeft()
+{
+    if (digitalRead(SIGNAL_B) == LOW)
+    {
+        encoder_ticks--;        // SIGNAL_A leads SIGNAL_B, so count one way
+    }
+    else
+    {
+        encoder_ticks++;        // SIGNAL_B leads SIGNAL_A, so count the other way
+    }
+}
+
+void decodeEncoderTicksRight()
+{
+    if (digitalRead(SIGNAL_D) == LOW)
+    {
+        encoder_ticksR--;       // SIGNAL_A leads SIGNAL_D, so count one way
+    }
+    else
+    {
+        encoder_ticksR++;       // SIGNAL_D leads SIGNAL_C, so count the other way
+    }
+}
+
+void driveForward()
+{
+    digitalWrite(M1, LOW);      // Drive forward (left wheels)
+    analogWrite(E1, 150);       // Write left motors command
+
+    digitalWrite(M2, HIGH);     // Drive forward (right wheels)
+    analogWrite(E2, 150);       // Write left motors command
+}
+
+void stopRover()
+{
+    digitalWrite(M1, HIGH);
+    analogWrite(E1, 0);
+
+    digitalWrite(M2, HIGH);
+    analogWrite(E2, 0);
+
+}
+
+void turnRight()
+{
+    digtalWrite(M1, LOW);
+    analogWrite(E1, 20);    // Write left motors command
+
+    digtalWrite(M2, LOW);
+    analogWrite(E2, 20);    // Write right motors command
+    delay(3000);
+}
+
+// """
+//     END OF SECOND BLOCK
+// """
+
+void setup()
+{
+    // Open the serial port at 9600 bps
+    Serial.begin(9600);
+}
+
+void loop()
+{
+    // Read the sensor output (0-1023, or 10 bits)
+    sharp_val = analogRead(SHARP_PIN_FRONT);          // change the pin to the appropriate one
+    sharpValLeft = analogRead(SHARP_PIN_LEFT);
+    sharpValRight = analogRead(SHARP_PIN_RIGHT);
+
+    estimatedDistanceFront = analogToDistance(sharp_val);
+    estimatedDistanceLeft = analogToDistance(sharpValLeft);
+    estimatedDistanceRight = analogToDistance(sharpValRight);
+
+    if(estimatedDistanceFront <= 25.00){
+        stopRover();
+        delay(1000);
+        turnRight();
+        delay(500);
+
+        /*
+            For future, calculate the proper delay given a set angular 
+            speed to turn the rover by 90 degrees
+        */
+    }
+    else{
+        driveForward();
+    }
+
+
+    Serial.print(estimatedDistanceFront);                    // Print the value to the Serial Monitor
+    Serial.print("\n");
+
+    // Delay for a bit before reading the sensor again
+    delay(500);
+}

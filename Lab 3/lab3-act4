@@ -1,0 +1,51 @@
+// MODIFIED SHARP program
+
+// Arduino analog input pin to which the Sharp sensor is connected
+const byte SHARP_PIN_FRONT = 0;
+const byte SHARP_PIN_LEFT = 1;
+const byte SHARP_PIN_RIGHT = 2;
+
+// Variable to store the proximity measurement
+int sharp_val = 0;
+int sharpValLeft = 0;
+int sharpValRight = 0;
+
+double estimatedDistanceFront = 0.0;
+double estimatedDistanceLeft = 0.0;
+double estimatedDistanceRight = 0.0;
+
+double analogToDistance(int analogValue){
+    double distance;
+    float analogValueF = (float)analogValue;
+    double quadTerm = pow(analogValueF, 4);
+    double tripleTerm = pow(analogValueF, 3);
+    double doubleTerm = pow(analogValueF, 2);
+    
+    distance = (0.00000002 * quadTerm) - (0.00002 * tripleTerm) + (0.0099 * doubleTerm) - (2.0354*analogValueF + 178.39); // V2
+
+    return distance/-10;
+}
+
+void setup()
+{
+    // Open the serial port at 9600 bps
+    Serial.begin(9600);
+}
+
+void loop()
+{
+    // Read the sensor output (0-1023, or 10 bits)
+    sharp_val = analogRead(SHARP_PIN_FRONT);          // change the pin to the appropriate one
+    sharpValLeft = analogRead(SHARP_PIN_LEFT);
+    sharpValRight = analogRead(SHARP_PIN_RIGHT);
+
+    estimatedDistanceFront = analogToDistance(sharp_val);
+    estimatedDistanceLeft = analogToDistance(sharpValLeft);
+    estimatedDistanceRight = analogToDistance(sharpValRight);
+
+    Serial.print(estimatedDistanceFront);                    // Print the value to the Serial Monitor
+    Serial.print("\n");
+
+    // Delay for a bit before reading the sensor again
+    delay(500);
+}
